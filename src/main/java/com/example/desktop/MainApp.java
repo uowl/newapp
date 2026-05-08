@@ -21,6 +21,7 @@ import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.util.List;
 import javax.imageio.ImageIO;
 
 public class MainApp extends Application {
@@ -44,14 +45,23 @@ public class MainApp extends Application {
             Platform.exit();
         });
 
-        maximizeStage(stage);
-        Label loadingLabel = new Label("Starting application...");
-        stage.setScene(new Scene(new StackPane(loadingLabel), 1400, 850));
+        // Start the application minimized to the taskbar to hide any loading flashes
+        stage.setIconified(true);
+        StackPane loadingPane = new StackPane();
+        loadingPane.setStyle("-fx-background-color: #000000;");
+        stage.setScene(new Scene(loadingPane, 1400, 850, javafx.scene.paint.Color.BLACK));
         stage.show();
-        Platform.runLater(() -> maximizeStage(stage));
 
         try {
-            server = new BackendServer();
+            // ── Register modules here — one line per plugin ────────────────
+            List<RouteRegistrar> registrars = List.of(
+                    new ExtractionRoutes(),
+                    new QueryRoutes(),
+                    new ConnectionRoutes()
+                    // new MyNewModuleRoutes(), // <-- add future modules here
+            );
+            // ─────────────────────────────────────────────────────────────
+            server = new BackendServer(registrars);
             server.start();
 
             String appUrl = "http://localhost:" + server.port();
@@ -62,6 +72,14 @@ public class MainApp extends Application {
                     System.out.println("WebView location: " + newLocation));
             webView.getEngine().getLoadWorker().stateProperty().addListener((obs, oldState, newState) -> {
                 System.out.println("WebView load state: " + newState);
+                if (newState == Worker.State.SUCCEEDED) {
+                    // Once loaded, restore the window and maximize it
+                    Platform.runLater(() -> {
+                        stage.setIconified(false);
+                        maximizeStage(stage);
+                        stage.toFront();
+                    });
+                }
                 if (newState == Worker.State.FAILED) {
                     Throwable error = webView.getEngine().getLoadWorker().getException();
                     if (error != null) {
@@ -69,10 +87,12 @@ public class MainApp extends Application {
                     }
                 }
             });
+            webView.getEngine().setUserStyleSheetLocation("data:text/css,html,body{background-color:%23000000 !important;}");
             webView.getEngine().load(appUrl);
 
-            stage.setScene(new Scene(new StackPane(webView), 1400, 850));
-            Platform.runLater(() -> maximizeStage(stage));
+            StackPane rootPane = new StackPane(webView);
+            rootPane.setStyle("-fx-background-color: #000000;");
+            stage.setScene(new Scene(rootPane, 1400, 850, javafx.scene.paint.Color.BLACK));
         } catch (Throwable ex) {
             System.err.println("Fatal startup error");
             ex.printStackTrace(System.err);

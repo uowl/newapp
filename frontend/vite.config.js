@@ -1,17 +1,15 @@
 import { defineConfig } from "vite";
 import vue from "@vitejs/plugin-vue";
-import vuetify, { transformAssetUrls } from "vite-plugin-vuetify";
+import tailwindcss from "@tailwindcss/vite";
 
 export default defineConfig({
   plugins: [
-    vue({
-      template: { transformAssetUrls }
-    }),
-    vuetify({ autoImport: true })
+    vue(),
+    tailwindcss()   // Vite-native — no postcss.config.js or tailwind.config.js needed
   ],
-  base: "/",
   build: {
     outDir: "../src/main/resources/public",
-    emptyOutDir: true
+    emptyOutDir: true,
+    sourcemap: false
   }
 });

@@ -1,17 +1,39 @@
-html,
-body,
-#app {
-  margin: 0;
-  width: 100%;
-  height: 100%;
+/* ── Fonts (local, zero CDN) ──────────────────────────────────────────────── */
+@import "@fontsource/inter/400.css";
+@import "@fontsource/inter/500.css";
+@import "@fontsource/inter/600.css";
+@import "@fontsource/inter/700.css";
+
+/* ── Tailwind v4 + DaisyUI v5 ─────────────────────────────────────────────── */
+@import "tailwindcss";
+
+@plugin "daisyui" {
+  themes: all;
 }
 
-.layout-root {
-  width: 100%;
-  height: 100%;
+/* ── Design tokens ────────────────────────────────────────────────────────── */
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
 }
 
-body.resizing-columns {
+/* ── Global resets ────────────────────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html, body, #app {
+  height: 100%;
+  overflow: hidden;
+}
+
+/* ── Column resize interaction ────────────────────────────────────────────── */
+body.col-resizing {
   cursor: col-resize !important;
+}
+body.col-resizing * {
   user-select: none !important;
+  pointer-events: none !important;
+}
+body.col-resizing .col-resizer {
+  pointer-events: all !important;
 }

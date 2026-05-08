@@ -106,24 +106,13 @@ public final class Launcher {
 
         @Override
         public void write(int b) throws IOException {
-            byte value = (byte) b;
-            writeToConsole(value);
-            writeToFileWithTimestamp(value);
+            // Delegate to the array overload to keep a single code path
+            write(new byte[]{(byte) b}, 0, 1);
         }
 
         @Override
         public void write(byte[] b) throws IOException {
-            if (!colorizeErrors) {
-                first.write(b);
-                for (byte value : b) {
-                    writeToFileWithTimestamp(value);
-                }
-                return;
-            }
-            for (byte value : b) {
-                writeToConsole(value);
-                writeToFileWithTimestamp(value);
-            }
+            write(b, 0, b.length);
         }
 
         @Override

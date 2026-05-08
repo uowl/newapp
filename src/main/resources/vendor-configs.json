@@ -1,0 +1,27 @@
+{
+  "Epic": {
+    "defaultPort": "1433",
+    "suggestedDatabases": ["Epic", "Epic_ReadOnly", "Clarity"],
+    "guidance": "Epic usually requires Clarity or Chronicles access. Ensure you are connecting to the read-only reporting mirror if available."
+  },
+  "Cerner": {
+    "defaultPort": "1433",
+    "suggestedDatabases": ["Millennium", "Cerner", "P001"],
+    "guidance": "Cerner Millennium instances often use numeric schema identifiers (e.g. P001). Check the oracle/sql instance name carefully."
+  },
+  "Meditech": {
+    "defaultPort": "1433",
+    "suggestedDatabases": ["MT6", "Meditech", "DR"],
+    "guidance": "Meditech data is typically sourced from the Data Repository (DR). Ensure the DR sync agent is active."
+  },
+  "Allscripts": {
+    "defaultPort": "1433",
+    "suggestedDatabases": ["Works", "Allscripts"],
+    "guidance": "Allscripts Sunrise uses the 'Works' database for clinical records."
+  },
+  "NextGen": {
+    "defaultPort": "1433",
+    "suggestedDatabases": ["NGData", "NextGen"],
+    "guidance": "NextGen typically stores patient data in 'NGData'."
+  }
+}

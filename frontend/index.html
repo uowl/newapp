@@ -1,9 +1,27 @@
 <!doctype html>
-<html lang="en" data-theme="corporate">
+<html lang="en" data-theme="black" class="theme-initializing">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>EMR Workspace</title>
+  <style>
+    /* Default to black background immediately to prevent white flash */
+    html { background-color: #000 !important; }
+    /* Hide body initially with a transition defined on the base state */
+    body { opacity: 0 !important; transition: opacity 0.6s ease-out !important; }
+    /* Gradual reveal */
+    .theme-loaded body { opacity: 1 !important; }
+  </style>
+  <script>
+    (function() {
+      try {
+        var theme = localStorage.getItem('emr_theme') || 'black';
+        document.documentElement.setAttribute('data-theme', theme);
+        var zoom = localStorage.getItem('emr_ui_zoom');
+        if (zoom) document.documentElement.style.zoom = zoom;
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
   <div id="app"></div>
