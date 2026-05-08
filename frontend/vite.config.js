@@ -1,0 +1,17 @@
+import { defineConfig } from "vite";
+import vue from "@vitejs/plugin-vue";
+import vuetify, { transformAssetUrls } from "vite-plugin-vuetify";
+
+export default defineConfig({
+  plugins: [
+    vue({
+      template: { transformAssetUrls }
+    }),
+    vuetify({ autoImport: true })
+  ],
+  base: "/",
+  build: {
+    outDir: "../src/main/resources/public",
+    emptyOutDir: true
+  }
+});
