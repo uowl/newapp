@@ -29,6 +29,7 @@ public final class Launcher {
         System.setProperty("org.slf4j.simpleLogger.logFile", "System.out");
         System.setProperty("org.slf4j.simpleLogger.showDateTime", "true");
         System.setProperty("org.slf4j.simpleLogger.dateTimeFormat", "yyyy-MM-dd HH:mm:ss.SSS");
+        System.setProperty("org.slf4j.simpleLogger.log.io.javalin", "warn");
         System.setProperty("app.logs.dir", logsDir.toString());
 
         System.out.println("Logs directory: " + logsDir);
@@ -38,6 +39,13 @@ public final class Launcher {
             System.err.println("Uncaught error on thread: " + thread.getName());
             throwable.printStackTrace(System.err);
         });
+        Runtime.getRuntime().addShutdownHook(new Thread(() -> {
+            try {
+                DataSourceManager.shutdownAll();
+            } catch (Exception ex) {
+                System.err.println("Error while shutting down data sources: " + ex.getMessage());
+            }
+        }, "datasource-shutdown"));
         MainApp.main(args);
     }
 

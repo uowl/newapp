@@ -9,8 +9,8 @@
     <name>javalin-vue-app</name>
 
     <properties>
-        <!-- Java 21 release flag (preferred over source/target for Java 9+) -->
-        <maven.compiler.release>21</maven.compiler.release>
+        <!-- Java 25 release flag (preferred over source/target for Java 9+) -->
+        <maven.compiler.release>25</maven.compiler.release>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
         <javalin.version>7.2.0</javalin.version>
         <jackson.version>2.21.2</jackson.version>
@@ -73,19 +73,6 @@
             <artifactId>HikariCP</artifactId>
             <version>6.2.1</version>
         </dependency>
-        <!-- JavaFX — classifier selects platform-specific native bundle -->
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-controls</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
-        <dependency>
-            <groupId>org.openjfx</groupId>
-            <artifactId>javafx-web</artifactId>
-            <version>${javafx.version}</version>
-            <classifier>${javafx.platform}</classifier>
-        </dependency>
     </dependencies>
 
     <build>
@@ -96,7 +83,7 @@
                 <version>3.13.0</version>
                 <configuration>
                     <!-- release supersedes source+target for Java 9+ cross-compilation -->
-                    <release>21</release>
+                    <release>25</release>
                 </configuration>
             </plugin>
             <!--

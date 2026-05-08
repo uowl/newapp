@@ -18,7 +18,7 @@ const database = useLocalStorage("emr_ext_sql_database", "");
 // ── Sidebar resize ────────────────────────────────────────────────────────────
 const { moduleRef, componentsPanelRef, workspacePanelRef, startResize } = useResizablePanel({
   storageKey: "emr_queryrunner_width",
-  defaultWidth: 320,
+  defaultWidth: 400,
   minWidth: 240,
   maxWidth: 560
 });
@@ -257,7 +257,7 @@ function downloadCSV() {
 
 <style scoped>
 .components-panel {
-  width: var(--components-width, 320px);
+  width: var(--components-width, 400px);
   min-width: 240px;
 }
 .col-resizer {

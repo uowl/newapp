@@ -3,6 +3,42 @@ import { computed, onBeforeUnmount, onMounted, ref, watch } from "vue";
 import { useModules } from "./modules/registry.js";
 import { DatabaseIcon, Palette, ZoomIn, ZoomOut } from "lucide-vue-next";
 
+const APP_BUILD_VERSION = __APP_BUILD_VERSION__;
+const APP_STORAGE_VERSION_KEY = "emr_app_storage_version";
+
+function compareVersions(left, right) {
+  const l = String(left ?? "").split(".").map(part => Number.parseInt(part, 10) || 0);
+  const r = String(right ?? "").split(".").map(part => Number.parseInt(part, 10) || 0);
+  const length = Math.max(l.length, r.length);
+  for (let i = 0; i < length; i += 1) {
+    const lv = l[i] ?? 0;
+    const rv = r[i] ?? 0;
+    if (lv > rv) return 1;
+    if (lv < rv) return -1;
+  }
+  return 0;
+}
+
+function migrateStorage(previousVersion, currentVersion) {
+  if (compareVersions(previousVersion, "1.0.1") < 0 && compareVersions(currentVersion, "1.0.1") >= 0) {
+    localStorage.removeItem("emr_extraction_width");
+    localStorage.removeItem("emr_dbconversion_width");
+    localStorage.removeItem("emr_queryrunner_width");
+  }
+}
+
+function ensureStorageVersion() {
+  const savedVersion = localStorage.getItem(APP_STORAGE_VERSION_KEY);
+  if (!savedVersion) {
+    localStorage.setItem(APP_STORAGE_VERSION_KEY, APP_BUILD_VERSION);
+    return;
+  }
+  if (compareVersions(APP_BUILD_VERSION, savedVersion) > 0) {
+    migrateStorage(savedVersion, APP_BUILD_VERSION);
+    localStorage.setItem(APP_STORAGE_VERSION_KEY, APP_BUILD_VERSION);
+  }
+}
+
 // ── Module registry ───────────────────────────────────────────────────────────
 const modules = useModules();
 const activeNavId = ref("");
@@ -16,19 +52,16 @@ const activeModule = computed(() =>
 );
 
 // ── Theme ─────────────────────────────────────────────────────────────────────
-// All 35 DaisyUI built-in themes. DaisyUI scopes color tokens to data-theme,
-// so each swatch preview renders in the actual theme's own colors.
+// Curated theme list: 2 light, 2 dark, 1 colorful.
 const THEMES = [
-  "light",       "dark",      "cupcake",     "bumblebee",  "emerald",
-  "corporate",   "synthwave", "retro",       "cyberpunk",  "valentine",
-  "halloween",   "garden",    "forest",      "aqua",       "lofi",
-  "pastel",      "fantasy",   "wireframe",   "black",      "luxury",
-  "dracula",     "cmyk",      "autumn",      "business",   "acid",
-  "lemonade",    "night",     "coffee",      "winter",     "dim",
-  "nord",        "sunset",    "caramellatte","abyss",      "silk"
+  "light",     // light
+  "cupcake",   // light
+  "dark",      // dark
+  "dim",       // dark
+  "synthwave"  // colorful
 ];
 
-const activeTheme      = ref("black");
+const activeTheme      = ref("dark");
 const themePickerOpen  = ref(false);
 const themePickerRef   = ref(null);
 const themeButtonRef   = ref(null);
@@ -86,10 +119,12 @@ function handleClickOutside(e) {
 
 // ── Lifecycle ─────────────────────────────────────────────────────────────────
 onMounted(() => {
-  const savedTheme = localStorage.getItem("emr_theme") ?? "black";
+  ensureStorageVersion();
+
+  const savedTheme = localStorage.getItem("emr_theme") ?? "dark";
   const savedZoom  = Number(localStorage.getItem("emr_ui_zoom")) || 1.0;
 
-  applyTheme(THEMES.includes(savedTheme) ? savedTheme : "black");
+  applyTheme(THEMES.includes(savedTheme) ? savedTheme : "dark");
   setZoom(savedZoom);
   // Apply zoom immediately on mount without triggering the watcher delay
   document.documentElement.style.zoom = String(uiZoom.value);

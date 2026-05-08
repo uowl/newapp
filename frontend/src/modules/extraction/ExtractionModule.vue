@@ -5,15 +5,16 @@ import { useLocalStorage }       from "../shared/useLocalStorage.js";
 import { useConnectionManager }  from "../shared/useConnectionManager.js";
 import {
   Search, X, ChevronDown, RotateCw, Server, KeyRound,
-  Database, Table2, FileText, Play, History, Lightbulb, Info, Save, Trash2
+  Database, Table2, FileText, Play, History, Save, Trash2, FolderOpen
 } from "lucide-vue-next";
 
 // ── Sidebar resize ────────────────────────────────────────────────────────────
-const { moduleRef, componentsPanelRef, workspacePanelRef, startResize } = useResizablePanel({
+const { componentsWidth, moduleRef, componentsPanelRef, workspacePanelRef, startResize } = useResizablePanel({
   storageKey: "emr_extraction_width",
-  defaultWidth: 320,
-  minWidth: 240,
-  maxWidth: 560
+  defaultWidth: 280,
+  min: 280,
+  max: 1400,
+  workspaceMin: 320
 });
 
 // ── Vendor state (persisted) ──────────────────────────────────────────────────
@@ -135,8 +136,14 @@ async function handleSaveConnection() {
 const databases        = ref([]);
 const database         = useLocalStorage("emr_ext_sql_database", "");
 const databaseQuery    = useLocalStorage("emr_ext_db_query",     "");
+const extractionSourceMode = useLocalStorage("emr_ext_source_mode", "database");
+const backupFilePath   = useLocalStorage("emr_ext_backup_file_path", "");
 const databaseMenuOpen = ref(false);
 const databaseWrapRef  = ref(null);
+const backupFileInputRef = ref(null);
+const projectSqlGridRef = ref(null);
+const sqlColumnWidth = ref("600px");
+const stackProjectSql = ref(false);
 const isLoadingDbs     = ref(false);
 const databaseError    = ref("");
 
@@ -164,6 +171,20 @@ function clearDatabase() {
   databaseMenuOpen.value = true;
 }
 function toggleDatabaseMenu() { databaseMenuOpen.value = !databaseMenuOpen.value; }
+
+function browseBackupFile() {
+  if (backupFileInputRef.value) {
+    backupFileInputRef.value.click();
+  }
+}
+
+function handleBackupFileSelected(event) {
+  const input = event.target;
+  const file = input?.files?.[0];
+  if (file) {
+    backupFilePath.value = file.name;
+  }
+}
 
 async function loadDatabases() {
   if (isLoadingDbs.value) return;
@@ -197,6 +218,22 @@ async function loadDatabases() {
 // ── Workspace (tab persisted) ─────────────────────────────────────────────────
 const workspaceTab  = useLocalStorage("emr_ext_ws_tab", "mapping");
 const workspaceText = useLocalStorage("emr_ext_ws_log", "");
+const hasExtractionTarget = computed(() =>
+  extractionSourceMode.value === "database"
+    ? Boolean(database.value)
+    : Boolean(backupFilePath.value.trim())
+);
+const canStartExtraction = computed(() =>
+  Boolean(selectedVendor.value) && hasExtractionTarget.value
+);
+const canRestore = computed(() =>
+  Boolean(selectedVendor.value) && Boolean(backupFilePath.value.trim())
+);
+const extractionTargetSummary = computed(() =>
+  extractionSourceMode.value === "database"
+    ? (database.value ? `Database: ${database.value}` : "No database selected")
+    : (backupFilePath.value ? `Backup: ${backupFilePath.value}` : "No backup file selected")
+);
 
 // ── Click-outside ─────────────────────────────────────────────────────────────
 function onClickOutside(e) {
@@ -205,8 +242,70 @@ function onClickOutside(e) {
   if (connHistoryRef.value  && !connHistoryRef.value.contains(e.target))  showConnHistory.value  = false;
 }
 
-onMounted(() => { loadVendors(); window.addEventListener("click", onClickOutside); });
-onBeforeUnmount(() => window.removeEventListener("click", onClickOutside));
+function adjustProjectSqlLayout() {
+  const grid = projectSqlGridRef.value;
+  if (!grid) return;
+
+  const containerWidth = grid.clientWidth;
+  stackProjectSql.value = containerWidth < 920;
+  if (stackProjectSql.value) {
+    sqlColumnWidth.value = "100%";
+    return;
+  }
+
+  const desiredSqlWidth = Math.round(window.innerWidth * 0.266);
+  const minimumLeftColumn = 240;
+  const minimumSqlColumn = 294;
+  const gap = 16;
+  const availableForSql = Math.max(360, containerWidth - minimumLeftColumn - gap);
+  const targetWidth = Math.max(minimumSqlColumn, desiredSqlWidth);
+  sqlColumnWidth.value = `${Math.min(availableForSql, targetWidth)}px`;
+}
+
+function onWindowMaximized() {
+  requestAnimationFrame(adjustMainLayoutWidth);
+  setTimeout(adjustMainLayoutWidth, 120);
+  requestAnimationFrame(adjustProjectSqlLayout);
+  setTimeout(adjustProjectSqlLayout, 120);
+}
+
+function adjustMainLayoutWidth() {
+  const components = componentsPanelRef.value;
+  const workspace = workspacePanelRef.value;
+  const module = moduleRef.value;
+  if (!components || !workspace || !module) return;
+
+  const splitter = 8;
+  const totalWidth = components.clientWidth + workspace.clientWidth + splitter;
+  if (totalWidth <= 0) return;
+
+  const target = Math.round(totalWidth * 0.45);
+  const minWidth = 280;
+  const maxWidth = Math.max(minWidth, totalWidth - 320 - splitter);
+  const clamped = Math.max(minWidth, Math.min(target, maxWidth));
+
+  componentsWidth.value = clamped;
+  module.style.setProperty("--components-width", `${clamped}px`);
+  localStorage.setItem("emr_extraction_width", String(clamped));
+}
+
+onMounted(() => {
+  loadVendors();
+  window.addEventListener("click", onClickOutside);
+  window.addEventListener("resize", adjustMainLayoutWidth);
+  window.addEventListener("resize", adjustProjectSqlLayout);
+  window.addEventListener("emr-window-maximized", onWindowMaximized);
+  requestAnimationFrame(adjustMainLayoutWidth);
+  setTimeout(adjustMainLayoutWidth, 120);
+  requestAnimationFrame(adjustProjectSqlLayout);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("click", onClickOutside);
+  window.removeEventListener("resize", adjustMainLayoutWidth);
+  window.removeEventListener("resize", adjustProjectSqlLayout);
+  window.removeEventListener("emr-window-maximized", onWindowMaximized);
+});
 </script>
 
 <template>
@@ -284,8 +383,14 @@ onBeforeUnmount(() => window.removeEventListener("click", onClickOutside));
         </div>
 
         <!-- ── Project details ─────────────────────────────────────────────── -->
-        <div class="card bg-base-200 border border-base-300">
-          <div class="card-body p-4 gap-4">
+        <div
+          ref="projectSqlGridRef"
+          class="grid gap-4 items-stretch"
+          :class="stackProjectSql ? 'grid-cols-1' : 'grid-cols-[minmax(240px,1fr)_var(--sql-col-width)]'"
+          :style="{ '--sql-col-width': sqlColumnWidth }"
+        >
+        <div class="card bg-base-200 border border-base-300 h-full">
+          <div class="card-body p-4 gap-4 h-full">
             <h3 class="font-semibold text-sm flex items-center gap-2">
               <FileText class="w-4 h-4 text-primary" /> Project Details
             </h3>
@@ -317,33 +422,29 @@ onBeforeUnmount(() => window.removeEventListener("click", onClickOutside));
         </div>
 
         <!-- ── SQL Server connection ───────────────────────────────────────── -->
-        <div class="card bg-base-200 border border-base-300">
-          <div class="card-body p-4 gap-4">
+        <div class="card bg-base-200 border border-base-300 h-full">
+          <div class="card-body p-4 gap-4 h-full">
             <h3 class="font-semibold text-sm flex items-center gap-2">
               <KeyRound class="w-4 h-4 text-primary" /> SQL Server
             </h3>
 
             <div class="form-control gap-1.5">
-              <label class="label p-0"><span class="label-text text-xs font-semibold">Host & Port</span></label>
-              <!-- Hostname + port with connection history dropdown -->
+              <label class="label p-0"><span class="label-text text-xs font-semibold">Host</span></label>
               <div class="relative" ref="connHistoryRef">
-                <div class="grid grid-cols-[1fr_auto] gap-2">
-                  <label class="input input-bordered input-sm flex items-center gap-1.5 pr-1">
-                    <input v-model="hostname" type="text" class="grow text-sm min-w-0"
-                           placeholder="Host / IP"
-                           @focus="showConnHistory = savedConnections.length > 0" />
-                    <button
-                      v-if="savedConnections.length"
-                      class="btn btn-ghost btn-xs btn-square shrink-0"
-                      title="Saved connections"
-                      @click.stop="showConnHistory = !showConnHistory"
-                    >
-                      <History class="w-3.5 h-3.5" />
-                    </button>
-                  </label>
-                  <input v-model="port" type="text"
-                         class="input input-bordered input-sm w-20"
-                         placeholder="1433" />
+                <input v-model="hostname" type="text"
+                       class="input input-bordered input-sm w-full"
+                       placeholder="Host / IP"
+                       @focus="showConnHistory = savedConnections.length > 0" />
+
+                <div v-if="savedConnections.length" class="mt-1.5 flex justify-end">
+                  <button
+                    class="btn btn-ghost btn-xs gap-1"
+                    title="Saved connections"
+                    @click.stop="showConnHistory = !showConnHistory"
+                  >
+                    <History class="w-3.5 h-3.5" />
+                    Connections
+                  </button>
                 </div>
 
                 <!-- Connection history dropdown -->
@@ -375,90 +476,123 @@ onBeforeUnmount(() => window.removeEventListener("click", onClickOutside));
             </div>
 
             <div class="form-control gap-1.5">
+              <label class="label p-0"><span class="label-text text-xs font-semibold">Port</span></label>
+              <input v-model="port" type="text"
+                     class="input input-bordered input-sm w-full"
+                     placeholder="1433" />
+            </div>
+
+            <div class="form-control gap-1.5">
               <label class="label p-0"><span class="label-text text-xs font-semibold">Credentials</span></label>
-              <div class="flex gap-2">
-                <input v-model="username" type="text"
-                       class="input input-bordered input-sm flex-1"
-                       placeholder="Username" />
-                <button class="btn btn-ghost btn-sm btn-square" 
+              <input v-model="username" type="text"
+                     class="input input-bordered input-sm w-full"
+                     placeholder="Username" />
+              <input v-model="password" type="password"
+                     class="input input-bordered input-sm w-full"
+                     placeholder="Password (not saved)" />
+              <div class="flex justify-end">
+                <button class="btn btn-ghost btn-sm btn-square"
                         title="Save Connection"
                         :disabled="!hostname || !username"
                         @click="handleSaveConnection">
                   <Save class="w-4 h-4" />
                 </button>
               </div>
-              <input v-model="password" type="password"
-                     class="input input-bordered input-sm w-full"
-                     placeholder="Password (not saved)" />
             </div>
 
-            <button
-              class="btn btn-primary btn-sm w-full"
-              :disabled="isLoadingDbs"
-              @click="loadDatabases"
-            >
-              <RotateCw v-if="isLoadingDbs" class="w-3.5 h-3.5 animate-spin" />
-              <Database v-else class="w-3.5 h-3.5" />
-              {{ isLoadingDbs ? "Connecting…" : "Load Databases" }}
-            </button>
+            <div class="form-control gap-1.5">
+              <label class="label p-0"><span class="label-text text-xs font-semibold">Extraction Source</span></label>
+              <div class="flex flex-col gap-2 text-sm">
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input v-model="extractionSourceMode" type="radio" class="radio radio-xs" value="database" />
+                  <span>DB name</span>
+                </label>
+                <label class="flex items-center gap-2 cursor-pointer">
+                  <input v-model="extractionSourceMode" type="radio" class="radio radio-xs" value="backup" />
+                  <span>Backup file</span>
+                </label>
+              </div>
+            </div>
 
-            <p v-if="databaseError" class="text-xs text-error">{{ databaseError }}</p>
+            <template v-if="extractionSourceMode === 'database'">
+              <button
+                class="btn btn-primary btn-sm w-full"
+                :disabled="isLoadingDbs"
+                @click="loadDatabases"
+              >
+                <RotateCw v-if="isLoadingDbs" class="w-3.5 h-3.5 animate-spin" />
+                <Database v-else class="w-3.5 h-3.5" />
+                {{ isLoadingDbs ? "Connecting…" : "Load Databases" }}
+              </button>
 
-            <div v-if="databases.length || database" class="form-control gap-1.5">
-              <label class="label p-0"><span class="label-text text-xs font-semibold">Target Database</span></label>
-              <div class="relative" ref="databaseWrapRef">
-              <label class="input input-bordered input-sm flex items-center gap-2 w-full pr-1">
-                <Table2 class="w-3.5 h-3.5 shrink-0 text-base-content/40" />
-                <input v-model="databaseQuery" type="text" class="grow text-sm min-w-0"
-                       placeholder="Select database…"
-                       autocomplete="off"
-                       @input="handleDatabaseInput"
-                       @focus="databaseMenuOpen = true" />
-                <button v-if="databaseQuery" class="btn btn-ghost btn-xs btn-square"
-                        @click.stop="clearDatabase">
-                  <X class="w-3 h-3" />
+              <p v-if="databaseError" class="text-xs text-error">{{ databaseError }}</p>
+
+              <div v-if="databases.length || database" class="form-control gap-1.5">
+                <label class="label p-0"><span class="label-text text-xs font-semibold">Target Database</span></label>
+                <div class="relative" ref="databaseWrapRef">
+                  <label class="input input-bordered input-sm flex items-center gap-2 w-full pr-1">
+                    <Table2 class="w-3.5 h-3.5 shrink-0 text-base-content/40" />
+                    <input v-model="databaseQuery" type="text" class="grow text-sm min-w-0"
+                           placeholder="Select database…"
+                           autocomplete="off"
+                           @input="handleDatabaseInput"
+                           @focus="databaseMenuOpen = true" />
+                    <button v-if="databaseQuery" class="btn btn-ghost btn-xs btn-square"
+                            @click.stop="clearDatabase">
+                      <X class="w-3 h-3" />
+                    </button>
+                    <button class="btn btn-ghost btn-xs btn-square" @click.stop="toggleDatabaseMenu">
+                      <ChevronDown class="w-3.5 h-3.5" />
+                    </button>
+                  </label>
+
+                  <ul v-if="databaseMenuOpen && filteredDatabases.length"
+                      class="absolute z-50 w-full mt-1 bg-base-100 border border-base-300
+                             rounded-lg shadow-lg max-h-44 overflow-y-auto py-1">
+                    <li v-for="db in filteredDatabases" :key="db">
+                      <button
+                        class="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 flex items-center justify-between gap-2"
+                        :class="database === db ? 'text-primary font-medium' : ''"
+                        @click="chooseDatabase(db)"
+                      >
+                        <div class="flex items-center gap-2 overflow-hidden">
+                          <Database class="w-3.5 h-3.5 shrink-0 opacity-50" />
+                          <span class="truncate">{{ db }}</span>
+                        </div>
+                        <span v-if="vendorConfig?.suggestedDatabases?.includes(db)"
+                              class="badge badge-primary badge-xs shrink-0 font-normal">Suggested</span>
+                      </button>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </template>
+
+            <div v-else class="form-control gap-1.5">
+              <label class="label p-0"><span class="label-text text-xs font-semibold">Backup File (.bak)</span></label>
+              <div class="grid grid-cols-[1fr_auto] gap-2">
+                <input v-model="backupFilePath" type="text"
+                       class="input input-bordered input-sm w-full"
+                       placeholder="Select a .bak file" />
+                <button class="btn btn-outline btn-sm gap-1.5" @click="browseBackupFile">
+                  <FolderOpen class="w-3.5 h-3.5" /> Browse
                 </button>
-                <button class="btn btn-ghost btn-xs btn-square" @click.stop="toggleDatabaseMenu">
-                  <ChevronDown class="w-3.5 h-3.5" />
-                </button>
-              </label>
-
-              <ul v-if="databaseMenuOpen && filteredDatabases.length"
-                  class="absolute z-50 w-full mt-1 bg-base-100 border border-base-300
-                         rounded-lg shadow-lg max-h-44 overflow-y-auto py-1">
-                <li v-for="db in filteredDatabases" :key="db">
-                  <button
-                    class="w-full text-left px-3 py-1.5 text-sm hover:bg-base-200 flex items-center justify-between gap-2"
-                    :class="database === db ? 'text-primary font-medium' : ''"
-                    @click="chooseDatabase(db)"
-                  >
-                    <div class="flex items-center gap-2 overflow-hidden">
-                      <Database class="w-3.5 h-3.5 shrink-0 opacity-50" />
-                      <span class="truncate">{{ db }}</span>
-                    </div>
-                    <span v-if="vendorConfig?.suggestedDatabases?.includes(db)"
-                          class="badge badge-primary badge-xs shrink-0 font-normal">Suggested</span>
-                  </button>
-                </li>
-              </ul>
+              </div>
+              <input
+                ref="backupFileInputRef"
+                type="file"
+                class="hidden"
+                accept=".bak"
+                @change="handleBackupFileSelected"
+              />
+              <button class="btn btn-outline btn-sm w-full gap-2" :disabled="!canRestore">
+                <RotateCw class="w-3.5 h-3.5" /> Restore
+              </button>
             </div>
           </div>
         </div>
       </div>
-    </div>
-
-    <!-- ── Vendor Guidance ────────────────────────────────────────────────── -->
-      <Transition name="fade">
-        <div v-if="vendorConfig?.guidance" class="px-4 pb-4">
-          <div class="alert alert-info bg-info/10 border-info/20 text-info-content rounded-xl p-3 shadow-sm">
-            <Lightbulb class="w-5 h-5 shrink-0 text-info" />
-            <div class="text-xs leading-relaxed">
-              <div class="font-bold mb-0.5">{{ selectedVendor }} Guidance</div>
-              {{ vendorConfig.guidance }}
-            </div>
-          </div>
         </div>
-      </Transition>
     </div>
 
     <!-- ── Column resizer ──────────────────────────────────────────────────── -->
@@ -472,13 +606,13 @@ onBeforeUnmount(() => window.removeEventListener("click", onClickOutside));
           <h2 class="text-lg font-bold leading-tight">
             {{ selectedVendor ? `${selectedVendor} — Extraction Workspace` : "Extraction Workspace" }}
           </h2>
-          <p class="text-xs text-base-content/50 mt-0.5">
-            {{ database ? `Database: ${database}` : "No database selected" }}
-          </p>
+          <p class="text-xs text-base-content/50 mt-0.5">{{ extractionTargetSummary }}</p>
         </div>
-        <button class="btn btn-primary btn-sm gap-2" :disabled="!selectedVendor || !database">
-          <Play class="w-4 h-4" /> Run Extraction
-        </button>
+        <div class="flex items-center gap-2">
+          <button class="btn btn-primary btn-sm gap-2" :disabled="!canStartExtraction">
+            <Play class="w-4 h-4" /> Start Extraction
+          </button>
+        </div>
       </div>
 
       <div role="tablist" class="tabs tabs-bordered px-6 bg-base-100 border-b border-base-300 shrink-0">
@@ -499,7 +633,7 @@ onBeforeUnmount(() => window.removeEventListener("click", onClickOutside));
              class="h-full flex items-center justify-center text-base-content/30">
           <div class="text-center space-y-3">
             <Table2 class="w-12 h-12 mx-auto" />
-            <p class="font-medium">Select a vendor and database to begin mapping</p>
+            <p class="font-medium">Select a vendor and extraction source to begin mapping</p>
           </div>
         </div>
 
@@ -519,7 +653,7 @@ onBeforeUnmount(() => window.removeEventListener("click", onClickOutside));
 .contents { display: contents; }
 
 .components-panel {
-  width: var(--components-width, 320px);
+  width: var(--components-width, 280px);
   min-width: 240px;
   flex-shrink: 0;
 }

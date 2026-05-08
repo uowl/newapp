@@ -5,6 +5,8 @@ import javafx.application.Platform;
 import javafx.concurrent.Worker;
 import javafx.geometry.Rectangle2D;
 import javafx.scene.Scene;
+import javafx.scene.control.Alert;
+import javafx.scene.control.ButtonType;
 import javafx.scene.control.Label;
 import javafx.scene.image.Image;
 import javafx.scene.layout.StackPane;
@@ -21,7 +23,10 @@ import java.awt.geom.RoundRectangle2D;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.net.URI;
+import java.awt.Desktop;
 import java.util.List;
+import java.util.Optional;
 import javax.imageio.ImageIO;
 
 public class MainApp extends Application {
@@ -41,6 +46,19 @@ public class MainApp extends Application {
             stage.getIcons().add(appIcon);
         }
         stage.setOnCloseRequest(event -> {
+            Alert confirm = new Alert(
+                    Alert.AlertType.CONFIRMATION,
+                    "Close EMR Workspace?\nAny active tasks will stop.",
+                    ButtonType.CANCEL,
+                    ButtonType.OK
+            );
+            confirm.setHeaderText("Confirm Close");
+            confirm.setTitle("EMR Workspace");
+            Optional<ButtonType> response = confirm.showAndWait();
+            if (response.isEmpty() || response.get() != ButtonType.OK) {
+                event.consume();
+                return;
+            }
             stopServer();
             Platform.exit();
         });
@@ -67,6 +85,21 @@ public class MainApp extends Application {
             String appUrl = "http://localhost:" + server.port();
             System.out.println("Javalin + JavaFX WebView app started at " + appUrl);
 
+            if (isWebViewDisabled()) {
+                System.out.println("WebView disabled; opening app in system browser instead.");
+                openInSystemBrowser(appUrl);
+                Label info = new Label("App is running at " + appUrl + "\nEmbedded WebView is disabled on this machine.");
+                info.setWrapText(true);
+                StackPane infoPane = new StackPane(info);
+                infoPane.setStyle("-fx-background-color: #111111; -fx-padding: 24;");
+                stage.setScene(new Scene(infoPane, 900, 250));
+                Platform.runLater(() -> {
+                    stage.setIconified(false);
+                    stage.toFront();
+                });
+                return;
+            }
+
             WebView webView = new WebView();
             webView.getEngine().locationProperty().addListener((obs, oldLocation, newLocation) ->
                     System.out.println("WebView location: " + newLocation));
@@ -78,6 +111,7 @@ public class MainApp extends Application {
                         stage.setIconified(false);
                         maximizeStage(stage);
                         stage.toFront();
+                        Platform.runLater(() -> notifyWindowMaximized(webView));
                     });
                 }
                 if (newState == Worker.State.FAILED) {
@@ -102,6 +136,33 @@ public class MainApp extends Application {
         }
     }
 
+    private boolean isWebViewDisabled() {
+        String property = System.getProperty("app.disable.webview");
+        String env = System.getenv("APP_DISABLE_WEBVIEW");
+        return isTruthy(property) || isTruthy(env);
+    }
+
+    private boolean isTruthy(String value) {
+        if (value == null) {
+            return false;
+        }
+        String normalized = value.trim().toLowerCase();
+        return normalized.equals("1") || normalized.equals("true") || normalized.equals("yes");
+    }
+
+    private void openInSystemBrowser(String url) {
+        try {
+            if (Desktop.isDesktopSupported()) {
+                Desktop desktop = Desktop.getDesktop();
+                if (desktop.isSupported(Desktop.Action.BROWSE)) {
+                    desktop.browse(URI.create(url));
+                }
+            }
+        } catch (Exception ex) {
+            System.err.println("Unable to open system browser: " + ex.getMessage());
+        }
+    }
+
     @Override
     public void stop() {
         stopServer();
@@ -120,6 +181,16 @@ public class MainApp extends Application {
         stage.setWidth(bounds.getWidth());
         stage.setHeight(bounds.getHeight());
         stage.setMaximized(true);
+    }
+
+    private void notifyWindowMaximized(WebView webView) {
+        try {
+            webView.getEngine().executeScript(
+                    "window.dispatchEvent(new CustomEvent('emr-window-maximized'));"
+            );
+        } catch (Exception ex) {
+            System.err.println("Unable to notify window maximize event: " + ex.getMessage());
+        }
     }
 
     private BufferedImage createAppIconBuffered() {

@@ -1,5 +1,5 @@
 <script setup>
-import { computed, ref } from "vue";
+import { computed, onBeforeUnmount, onMounted, ref } from "vue";
 import { useResizablePanel }    from "../shared/useResizablePanel.js";
 import { useLocalStorage }      from "../shared/useLocalStorage.js";
 import { useConnectionManager }  from "../shared/useConnectionManager.js";
@@ -9,18 +9,22 @@ import {
 } from "lucide-vue-next";
 
 // ── Sidebar resize ────────────────────────────────────────────────────────────
-const { moduleRef, componentsPanelRef, workspacePanelRef, startResize } = useResizablePanel({
+const { componentsWidth, moduleRef, componentsPanelRef, workspacePanelRef, startResize } = useResizablePanel({
   storageKey: "emr_dbconversion_width",
-  defaultWidth: 320,
-  minWidth: 240,
-  maxWidth: 560
+  defaultWidth: 400,
+  min: 280,
+  max: 1400,
+  workspaceMin: 320
 });
+const connectionCardsRef = ref(null);
+const stackConnectionCards = ref(false);
 
 // ── DB type options ───────────────────────────────────────────────────────────
 const DB_TYPES = [
   { id: "sqlserver", label: "SQL Server" },
   { id: "postgres",  label: "PostgreSQL" },
-  { id: "mysql",     label: "MySQL / MariaDB" },
+  { id: "mysql",     label: "MySQL" },
+  { id: "mariadb",   label: "MariaDB" },
   { id: "oracle",    label: "Oracle DB" },
   { id: "sqlite",    label: "SQLite" }
 ];
@@ -114,6 +118,55 @@ async function runConversion() {
   conversionLog.value += `[${new Date().toLocaleTimeString()}] Done.\n`;
   isRunning.value = false;
 }
+
+function adjustMainLayoutWidth() {
+  const components = componentsPanelRef.value;
+  const workspace = workspacePanelRef.value;
+  const module = moduleRef.value;
+  if (!components || !workspace || !module) return;
+
+  const splitter = 8;
+  const totalWidth = components.clientWidth + workspace.clientWidth + splitter;
+  if (totalWidth <= 0) return;
+
+  const target = Math.round(totalWidth * 0.45);
+  const minWidth = 280;
+  const maxWidth = Math.max(minWidth, totalWidth - 320 - splitter);
+  const clamped = Math.max(minWidth, Math.min(target, maxWidth));
+
+  componentsWidth.value = clamped;
+  module.style.setProperty("--components-width", `${clamped}px`);
+  localStorage.setItem("emr_dbconversion_width", String(clamped));
+}
+
+function adjustConnectionCardsLayout() {
+  const grid = connectionCardsRef.value;
+  if (!grid) return;
+  stackConnectionCards.value = grid.clientWidth < 980;
+}
+
+function onWindowMaximized() {
+  requestAnimationFrame(adjustMainLayoutWidth);
+  setTimeout(adjustMainLayoutWidth, 120);
+  requestAnimationFrame(adjustConnectionCardsLayout);
+  setTimeout(adjustConnectionCardsLayout, 120);
+}
+
+onMounted(() => {
+  window.addEventListener("resize", adjustMainLayoutWidth);
+  window.addEventListener("resize", adjustConnectionCardsLayout);
+  window.addEventListener("emr-window-maximized", onWindowMaximized);
+  requestAnimationFrame(adjustMainLayoutWidth);
+  requestAnimationFrame(adjustConnectionCardsLayout);
+  setTimeout(adjustMainLayoutWidth, 120);
+  setTimeout(adjustConnectionCardsLayout, 120);
+});
+
+onBeforeUnmount(() => {
+  window.removeEventListener("resize", adjustMainLayoutWidth);
+  window.removeEventListener("resize", adjustConnectionCardsLayout);
+  window.removeEventListener("emr-window-maximized", onWindowMaximized);
+});
 </script>
 
 <template>
@@ -129,12 +182,17 @@ async function runConversion() {
 
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
 
-        <!-- Source DB -->
-        <div class="card bg-base-200 border border-base-300">
-          <div class="card-body p-4 gap-4">
-            <h3 class="font-semibold text-sm flex items-center gap-2">
-              <Database class="w-4 h-4 text-primary" /> Source Database
-            </h3>
+        <div
+          ref="connectionCardsRef"
+          class="grid gap-4 items-stretch"
+          :class="stackConnectionCards ? 'grid-cols-1' : 'grid-cols-[minmax(0,1fr)_40px_minmax(0,1fr)]'"
+        >
+          <!-- Source DB -->
+          <div class="card bg-base-200 border border-base-300 h-full">
+            <div class="card-body p-4 gap-4 h-full">
+              <h3 class="font-semibold text-sm flex items-center gap-2">
+                <Database class="w-4 h-4 text-primary" /> Source Database
+              </h3>
 
             <div class="form-control gap-1.5">
               <label class="label p-0"><span class="label-text text-xs font-semibold">Database Engine</span></label>
@@ -144,22 +202,21 @@ async function runConversion() {
             </div>
 
             <div class="form-control gap-1.5">
-              <label class="label p-0"><span class="label-text text-xs font-semibold">Host & Port</span></label>
+              <label class="label p-0"><span class="label-text text-xs font-semibold">Host</span></label>
               <!-- Hostname with history dropdown -->
               <div class="relative" ref="srcHistoryRef">
-                <div class="grid grid-cols-[1fr_auto] gap-2">
-                  <label class="input input-bordered input-sm flex items-center gap-1.5 pr-1">
-                    <input v-model="sourceHost" type="text" class="grow text-sm min-w-0"
-                           placeholder="Host"
-                           @focus="showSrcHistory = savedConnections.length > 0" />
-                    <button v-if="savedConnections.length" class="btn btn-ghost btn-xs btn-square shrink-0"
-                            title="Saved connections"
-                            @click.stop="showSrcHistory = !showSrcHistory">
-                      <History class="w-3.5 h-3.5" />
-                    </button>
-                  </label>
-                  <input v-model="sourcePort" type="text"
-                         class="input input-bordered input-sm w-20" placeholder="Port" />
+                <input v-model="sourceHost" type="text"
+                       class="input input-bordered input-sm w-full"
+                       placeholder="Host"
+                       @focus="showSrcHistory = savedConnections.length > 0" />
+
+                <div v-if="savedConnections.length" class="mt-1.5 flex justify-end">
+                  <button class="btn btn-ghost btn-xs gap-1"
+                          title="Saved connections"
+                          @click.stop="showSrcHistory = !showSrcHistory">
+                    <History class="w-3.5 h-3.5" />
+                    Connections
+                  </button>
                 </div>
 
                 <ul v-if="showSrcHistory" class="absolute z-10 w-full mt-1 menu bg-base-100 rounded-box border border-base-300 shadow-xl max-h-48 overflow-y-auto">
@@ -176,36 +233,46 @@ async function runConversion() {
             </div>
 
             <div class="form-control gap-1.5">
+              <label class="label p-0"><span class="label-text text-xs font-semibold">Port</span></label>
+              <input v-model="sourcePort" type="text" class="input input-bordered input-sm w-full" placeholder="Port" />
+            </div>
+
+            <div class="form-control gap-1.5">
               <label class="label p-0"><span class="label-text text-xs font-semibold">Credentials</span></label>
-              <div class="flex gap-2">
-                <input v-model="sourceUser" type="text" class="input input-bordered input-sm flex-1" placeholder="Username" />
+              <input v-model="sourceUser" type="text" class="input input-bordered input-sm w-full" placeholder="Username" />
+              <input v-model="sourcePass" type="password" class="input input-bordered input-sm w-full" placeholder="Password (not saved)" />
+              <div class="flex justify-end">
                 <button class="btn btn-ghost btn-sm btn-square" @click="handleSaveSrc" title="Save">
                   <Save class="w-4 h-4" />
                 </button>
               </div>
-              <input v-model="sourcePass" type="password" class="input input-bordered input-sm w-full" placeholder="Password (not saved)" />
             </div>
 
             <div class="form-control gap-1.5">
               <label class="label p-0"><span class="label-text text-xs font-semibold">Initial Database</span></label>
               <input v-model="sourceDatabase" type="text" class="input input-bordered input-sm w-full" placeholder="Database name" />
             </div>
+            </div>
           </div>
-        </div>
 
-        <!-- Arrow separator -->
-        <div class="flex items-center justify-center text-base-content/30 gap-2">
-          <div class="flex-1 h-px bg-base-300" />
-          <ArrowRight class="w-4 h-4 shrink-0" />
-          <div class="flex-1 h-px bg-base-300" />
-        </div>
+          <!-- Arrow separator -->
+          <div v-if="stackConnectionCards" class="flex items-center justify-center text-base-content/30 gap-2">
+            <div class="flex-1 h-px bg-base-300" />
+            <ArrowRight class="w-4 h-4 shrink-0 rotate-90" />
+            <div class="flex-1 h-px bg-base-300" />
+          </div>
+          <div v-else class="flex flex-col items-center justify-center text-base-content/30 gap-2 self-stretch">
+            <div class="w-px flex-1 bg-base-300" />
+            <ArrowRight class="w-4 h-4 shrink-0" />
+            <div class="w-px flex-1 bg-base-300" />
+          </div>
 
-        <!-- Target DB -->
-        <div class="card bg-base-200 border border-base-300">
-          <div class="card-body p-4 gap-4">
-            <h3 class="font-semibold text-sm flex items-center gap-2">
-              <Database class="w-4 h-4 text-secondary" /> Target Database
-            </h3>
+          <!-- Target DB -->
+          <div class="card bg-base-200 border border-base-300 h-full">
+            <div class="card-body p-4 gap-4 h-full">
+              <h3 class="font-semibold text-sm flex items-center gap-2">
+                <Database class="w-4 h-4 text-secondary" /> Target Database
+              </h3>
 
             <div class="form-control gap-1.5">
               <label class="label p-0"><span class="label-text text-xs font-semibold">Database Engine</span></label>
@@ -215,22 +282,21 @@ async function runConversion() {
             </div>
 
             <div class="form-control gap-1.5">
-              <label class="label p-0"><span class="label-text text-xs font-semibold">Host & Port</span></label>
+              <label class="label p-0"><span class="label-text text-xs font-semibold">Host</span></label>
               <!-- Hostname with history dropdown -->
               <div class="relative" ref="tgtHistoryRef">
-                <div class="grid grid-cols-[1fr_auto] gap-2">
-                  <label class="input input-bordered input-sm flex items-center gap-1.5 pr-1">
-                    <input v-model="targetHost" type="text" class="grow text-sm min-w-0"
-                           placeholder="Host"
-                           @focus="showTgtHistory = savedConnections.length > 0" />
-                    <button v-if="savedConnections.length" class="btn btn-ghost btn-xs btn-square shrink-0"
-                            title="Saved connections"
-                            @click.stop="showTgtHistory = !showTgtHistory">
-                      <History class="w-3.5 h-3.5" />
-                    </button>
-                  </label>
-                  <input v-model="targetPort" type="text"
-                         class="input input-bordered input-sm w-20" placeholder="Port" />
+                <input v-model="targetHost" type="text"
+                       class="input input-bordered input-sm w-full"
+                       placeholder="Host"
+                       @focus="showTgtHistory = savedConnections.length > 0" />
+
+                <div v-if="savedConnections.length" class="mt-1.5 flex justify-end">
+                  <button class="btn btn-ghost btn-xs gap-1"
+                          title="Saved connections"
+                          @click.stop="showTgtHistory = !showTgtHistory">
+                    <History class="w-3.5 h-3.5" />
+                    Connections
+                  </button>
                 </div>
 
                 <ul v-if="showTgtHistory" class="absolute z-10 w-full mt-1 menu bg-base-100 rounded-box border border-base-300 shadow-xl max-h-48 overflow-y-auto">
@@ -247,46 +313,55 @@ async function runConversion() {
             </div>
 
             <div class="form-control gap-1.5">
+              <label class="label p-0"><span class="label-text text-xs font-semibold">Port</span></label>
+              <input v-model="targetPort" type="text" class="input input-bordered input-sm w-full" placeholder="Port" />
+            </div>
+
+            <div class="form-control gap-1.5">
               <label class="label p-0"><span class="label-text text-xs font-semibold">Credentials</span></label>
-              <div class="flex gap-2">
-                <input v-model="targetUser" type="text" class="input input-bordered input-sm flex-1" placeholder="Username" />
+              <input v-model="targetUser" type="text" class="input input-bordered input-sm w-full" placeholder="Username" />
+              <input v-model="targetPass" type="password" class="input input-bordered input-sm w-full" placeholder="Password (not saved)" />
+              <div class="flex justify-end">
                 <button class="btn btn-ghost btn-sm btn-square" @click="handleSaveTgt" title="Save">
                   <Save class="w-4 h-4" />
                 </button>
               </div>
-              <input v-model="targetPass" type="password" class="input input-bordered input-sm w-full" placeholder="Password (not saved)" />
             </div>
 
             <div class="form-control gap-1.5">
               <label class="label p-0"><span class="label-text text-xs font-semibold">Initial Database</span></label>
               <input v-model="targetDatabase" type="text" class="input input-bordered input-sm w-full" placeholder="Database name" />
             </div>
-          </div>
-        </div>
-
-        <!-- Options -->
-        <div class="card bg-base-200 border border-base-300">
-          <div class="card-body p-4 gap-4">
-            <h3 class="font-semibold text-sm flex items-center gap-2">
-              <Settings2 class="w-4 h-4 text-primary" /> Options
-            </h3>
-            <div class="form-control gap-1.5">
-              <label class="label p-0"><span class="label-text text-xs font-semibold">Batch Size</span></label>
-              <input v-model.number="batchSize" type="number" min="1" max="10000"
-                     class="input input-bordered input-sm w-full" />
             </div>
-            <label class="flex items-center gap-3 cursor-pointer py-1">
-              <input v-model="migrateSchema" type="checkbox" class="checkbox checkbox-primary checkbox-sm" />
-              <span class="text-sm">Migrate schema</span>
-            </label>
-            <label class="flex items-center gap-3 cursor-pointer py-1">
-              <input v-model="migrateData" type="checkbox" class="checkbox checkbox-primary checkbox-sm" />
-              <span class="text-sm">Migrate data</span>
-            </label>
-            <label class="flex items-center gap-3 cursor-pointer py-1">
-              <input v-model="dropTarget" type="checkbox" class="checkbox checkbox-warning checkbox-sm" />
-              <span class="text-sm text-warning">Drop target tables first</span>
-            </label>
+          </div>
+
+          <!-- Options -->
+          <div
+            class="card bg-base-200 border border-base-300"
+            :class="stackConnectionCards ? '' : 'col-start-1 col-end-2'"
+          >
+            <div class="card-body p-4 gap-4">
+              <h3 class="font-semibold text-sm flex items-center gap-2">
+                <Settings2 class="w-4 h-4 text-primary" /> Options
+              </h3>
+              <div class="form-control gap-1.5">
+                <label class="label p-0"><span class="label-text text-xs font-semibold">Batch Size</span></label>
+                <input v-model.number="batchSize" type="number" min="1" max="10000"
+                       class="input input-bordered input-sm w-full" />
+              </div>
+              <label class="flex items-center gap-3 cursor-pointer py-1">
+                <input v-model="migrateSchema" type="checkbox" class="checkbox checkbox-primary checkbox-sm" />
+                <span class="text-sm">Migrate schema</span>
+              </label>
+              <label class="flex items-center gap-3 cursor-pointer py-1">
+                <input v-model="migrateData" type="checkbox" class="checkbox checkbox-primary checkbox-sm" />
+                <span class="text-sm">Migrate data</span>
+              </label>
+              <label class="flex items-center gap-3 cursor-pointer py-1">
+                <input v-model="dropTarget" type="checkbox" class="checkbox checkbox-warning checkbox-sm" />
+                <span class="text-sm text-warning">Drop target tables first</span>
+              </label>
+            </div>
           </div>
         </div>
       </div>
@@ -348,7 +423,7 @@ async function runConversion() {
 
 <style scoped>
 .contents { display: contents; }
-.components-panel { width: var(--components-width, 320px); min-width: 240px; flex-shrink: 0; }
+.components-panel { width: var(--components-width, 400px); min-width: 240px; flex-shrink: 0; }
 .workspace-panel  { flex: 1; min-width: 240px; }
 .col-resizer { width: 8px; flex-shrink: 0; cursor: col-resize; position: relative; }
 .col-resizer::after {

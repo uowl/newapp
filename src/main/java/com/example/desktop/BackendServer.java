@@ -38,7 +38,13 @@ public class BackendServer {
     }
 
     public void stop() {
-        if (app != null) app.stop();
+        try {
+            if (app != null) {
+                app.stop();
+            }
+        } finally {
+            DataSourceManager.shutdownAll();
+        }
     }
 
     public int port() {
